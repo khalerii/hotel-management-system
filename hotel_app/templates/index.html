@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гостиница - Панель администратора</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .section { margin-bottom: 30px; border: 1px solid #ccc; padding: 15px; border-radius: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        button { padding: 5px 10px; margin: 5px; cursor: pointer; }
+        .form-group { margin-bottom: 10px; }
+        label { display: inline-block; width: 150px; }
+    </style>
+</head>
+<body>
+    <h1>Панель администратора гостиницы</h1>
+    
+    <div class="section">
+        <h2>Поиск свободных номеров</h2>
+        <div class="form-group">
+            <label for="check_in">Дата заезда:</label>
+            <input type="date" id="check_in" required>
+        </div>
+        <div class="form-group">
+            <label for="check_out">Дата выезда:</label>
+            <input type="date" id="check_out" required>
+        </div>
+        <button onclick="searchRooms()">Найти номера</button>
+        
+        <div id="roomsResult" style="margin-top: 20px;"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Все бронирования</h2>
+        <button onclick="loadBookings()">Обновить список</button>
+        <div id="bookingsList" style="margin-top: 20px;"></div>
+    </div>
+    
+    <script>
+        // Функция поиска свободных номеров
+        async function searchRooms() {
+            const checkIn = document.getElementById('check_in').value;
+            const checkOut = document.getElementById('check_out').value;
+            
+            if (!checkIn || !checkOut) {
+                alert('Заполните обе даты!');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/rooms/available?check_in=${checkIn}&check_out=${checkOut}`);
+                const rooms = await response.json();
+                
+                let html = '<h3>Результаты поиска:</h3>';
+                
+                if (rooms.length === 0) {
+                    html += '<p>Нет свободных номеров на выбранные даты</p>';
+                } else {
+                    html += '<table><tr><th>Номер</th><th>Категория</th><th>Вместимость</th><th>Цена за ночь</th><th>Действие</th></tr>';
+                    
+                    rooms.forEach(room => {
+                        html += `
+                        <tr>
+                            <td>${room.number}</td>
+                            <td>${room.category}</td>
+                            <td>${room.capacity} чел.</td>
+                            <td>${room.price_per_night} руб.</td>
+                            <td>
+                                <button onclick="showBookingForm(${room.id}, '${checkIn}', '${checkOut}')">Забронировать</button>
+                            </td>
+                        </tr>`;
+                    });
+                    
+                    html += '</table>';
+                }
+                
+                document.getElementById('roomsResult').innerHTML = html;
+            } catch (error) {
+                console.error('Ошибка:', error);
+            }
+        }
+        
+        // Показать форму бронирования
+        function showBookingForm(roomId, checkIn, checkOut) {
+            const formHtml = `
+            <h3>Форма бронирования</h3>
+            <div class="form-group">
+                <label for="guest_name">ФИО гостя:</label>
+                <input type="text" id="guest_name" required>
+            </div>
+            <div class="form-group">
+                <label for="guest_phone">Телефон:</label>
+                <input type="tel" id="guest_phone" required>
+            </div>
+            <div class="form-group">
+                <label for="adults_count">Количество взрослых:</label>
+                <input type="number" id="adults_count" min="1" value="1" required>
+            </div>
+            <div class="form-group">
+                <label for="children_count">Количество детей:</label>
+                <input type="number" id="children_count" min="0" value="0">
+            </div>
+            <div class="form-group">
+                <label for="child_bed">Детская кровать:</label>
+                <input type="checkbox" id="child_bed">
+            </div>
+            <div class="form-group">
+                <label>Даты:</label>
+                <span>${checkIn} - ${checkOut}</span>
+            </div>
+            <button onclick="createBooking(${roomId}, '${checkIn}', '${checkOut}')">Подтвердить бронь</button>
+            `;
+            
+            document.getElementById('roomsResult').innerHTML += formHtml;
+        }
+        
+        // Создать бронирование
+        async function createBooking(roomId, checkIn, checkOut) {
+            const guestName = document.getElementById('guest_name').value;
+            const guestPhone = document.getElementById('guest_phone').value;
+            const adultsCount = document.getElementById('adults_count').value;
+            const childrenCount = document.getElementById('children_count').value;
+            const childBed = document.getElementById('child_bed').checked;
+            
+            if (!guestName || !guestPhone) {
+                alert('Заполните обязательные поля!');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/bookings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        guest_name: guestName,
+                        guest_phone: guestPhone,
+                        room_id: roomId,
+                        check_in: checkIn,
+                        check_out: checkOut,
+                        adults: adultsCount,
+                        children: childrenCount,
+                        child_bed: childBed
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.status === 201) {
+                    alert(result.message);
+                    loadBookings(); // Обновляем список бронирований
+                    searchRooms(); // Обновляем поиск номеров
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+            }
+        }
+        
+        // Загрузить список бронирований
+        async function loadBookings() {
+            try {
+                const response = await fetch('/api/bookings');
+                const bookings = await response.json();
+                
+                let html = '<table><tr><th>ID</th><th>Гость</th><th>Телефон</th><th>Номер</th><th>Даты</th><th>Стоимость</th><th>Статус</th><th>Действие</th></tr>';
+                
+                bookings.forEach(booking => {
+                    html += `
+                    <tr>
+                        <td>${booking.id}</td>
+                        <td>${booking.full_name}</td>
+                        <td>${booking.phone}</td>
+                        <td>${booking.room_number}</td>
+                        <td>${booking.check_in_date} - ${booking.check_out_date}</td>
+                        <td>${booking.total_price} руб.</td>
+                        <td>${booking.status}</td>
+                        <td>
+                            ${booking.status === 'подтверждено' ? 
+                            `<button onclick="cancelBooking(${booking.id})">Отменить</button>` : 
+                            ''}
+                        </td>
+                    </tr>`;
+                });
+                
+                html += '</table>';
+                
+                document.getElementById('bookingsList').innerHTML = html;
+            } catch (error) {
+                console.error('Ошибка:', error);
+            }
+        }
+        
+        // Отменить бронирование
+        async function cancelBooking(bookingId) {
+            if (!confirm('Вы уверены, что хотите отменить это бронирование?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/bookings/${bookingId}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    alert(result.message);
+                    loadBookings(); // Обновляем список бронирований
+                    searchRooms(); // Обновляем поиск номеров
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Ошибка:', error);
+            }
+        }
+        
+        // Загружаем бронирования при загрузке страницы
+        window.onload = loadBookings;
+    </script>
+</body>
+</html>
